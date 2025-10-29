@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import EditPromptModal from "./components/EditPromptModal";
 
@@ -8,10 +8,18 @@ export default function SessionsPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [error, setError] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [currentPrompt, setCurrentPrompt] = useState("");
+
+  const skipRef = useRef(0);
+  const isFetchingRef = useRef(false);
+  const triggeredOnceAtBottom = useRef(false);
+  const limit = 10;
 
   // Open modal on edit click
   function openEditPrompt(session) {
@@ -29,26 +37,92 @@ export default function SessionsPage() {
     );
   }
 
-  useEffect(() => {
-    async function fetchSessions() {
-      setLoading(true);
-      try {
-        const res = await fetch("http://127.0.0.1:8000/sessions");
-        if (!res.ok) {
-          const errorData = await res.json();
-          alert(`Error fetching sessions: ${errorData.detail || "Unknown error"}`);
-          setLoading(false);
-          return;
-        }
-        const data = await res.json();
-        setSessions(data);
-      } catch (error) {
-        alert("Failed to fetch sessions: " + error.message);
+  // ============================
+  // Fetch Sessions with Pagination
+  // ============================
+  async function fetchSessions() {
+    if (isFetchingRef.current || !hasMore) return;
+
+    isFetchingRef.current = true;
+    setLoading(true);
+    setError("");
+
+    try {
+      const skip = skipRef.current;
+      const res = await fetch(
+        `http://127.0.0.1:8000/sessions?skip=${skip}&limit=${limit}`
+      );
+
+      if (!res.ok) {
+        setHasMore(false);
+        throw new Error(`Failed to fetch sessions: ${res.statusText}`);
       }
+
+      const result = await res.json(); // expecting { total, data: [...] }
+
+      if (!result || !Array.isArray(result.data)) {
+        console.error("Invalid response format:", result);
+        setHasMore(false);
+        return;
+      }
+
+      setTotal(result.total);
+
+      setSessions((prev) => {
+        const existingIds = new Set(prev.map((s) => String(s.id)));
+        const newSessions = result.data.filter(
+          (s) => !existingIds.has(String(s.id))
+        );
+        return [...prev, ...newSessions];
+      });
+
+      skipRef.current += result.data.length;
+
+      // Stop when all are loaded
+      if (skipRef.current >= result.total) {
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error("Error fetching sessions:", err);
+      setError("Could not fetch sessions. Please check backend.");
+      setHasMore(false);
+    } finally {
       setLoading(false);
+      isFetchingRef.current = false;
+      triggeredOnceAtBottom.current = false;
     }
+  }
+
+  // ============================
+  // Infinite Scroll Logic
+  // ============================
+  const handleScroll = () => {
+    if (
+      !hasMore ||
+      loading ||
+      isFetchingRef.current ||
+      triggeredOnceAtBottom.current
+    )
+      return;
+
+    const scrollPosition =
+      window.innerHeight + document.documentElement.scrollTop;
+    const scrollHeight = document.documentElement.offsetHeight;
+
+    if (scrollHeight - scrollPosition < 200) {
+      triggeredOnceAtBottom.current = true;
+      fetchSessions();
+    }
+  };
+
+  useEffect(() => {
     fetchSessions();
   }, []);
+
+  useEffect(() => {
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  });
 
   function goToSession(sessionId) {
     if (sessionId) {
@@ -71,52 +145,61 @@ export default function SessionsPage() {
         </button>
       </div>
 
-      {loading && <div className="flex justify-center items-center h-full w-full">
-        <svg
-          fill="hsl(228, 97%, 42%)"
-          viewBox="0 0 60 60"
-          xmlns="http://www.w3.org/2000/svg"
-          width="60"
-          height="60"
-        >
-          <circle cx="5" cy="15" r="5">
-            <animate
-              id="spinner_qFRN"
-              begin="0;spinner_OcgL.end+0.25s"
-              attributeName="cy"
-              calcMode="spline"
-              dur="0.6s"
-              values="12;6;12"
-              keySplines=".33,.66,.66,1;.33,0,.66,.33"
-            />
-          </circle>
-          <circle cx="20" cy="15" r="5">
-            <animate
-              begin="spinner_qFRN.begin+0.1s"
-              attributeName="cy"
-              calcMode="spline"
-              dur="0.6s"
-              values="12;6;12"
-              keySplines=".33,.66,.66,1;.33,0,.66,.33"
-            />
-          </circle>
-          <circle cx="35" cy="15" r="5">
-            <animate
-              id="spinner_OcgL"
-              begin="spinner_qFRN.begin+0.2s"
-              attributeName="cy"
-              calcMode="spline"
-              dur="0.6s"
-              values="12;6;12"
-              keySplines=".33,.66,.66,1;.33,0,.66,.33"
-            />
-          </circle>
-        </svg>
-      </div>}
-      {!loading && sessions.length === 0 && (
+      {/* Loading or Error */}
+      {error && (
+        <p className="text-red-600 text-center mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
+          {error}
+        </p>
+      )}
+      {loading && sessions.length === 0 && (
+        <div className="flex justify-center items-center h-full w-full">
+          <svg
+            fill="hsl(228, 97%, 42%)"
+            viewBox="0 0 60 60"
+            xmlns="http://www.w3.org/2000/svg"
+            width="60"
+            height="60"
+          >
+            <circle cx="5" cy="15" r="5">
+              <animate
+                id="spinner_qFRN"
+                begin="0;spinner_OcgL.end+0.25s"
+                attributeName="cy"
+                calcMode="spline"
+                dur="0.6s"
+                values="12;6;12"
+                keySplines=".33,.66,.66,1;.33,0,.66,.33"
+              />
+            </circle>
+            <circle cx="20" cy="15" r="5">
+              <animate
+                begin="spinner_qFRN.begin+0.1s"
+                attributeName="cy"
+                calcMode="spline"
+                dur="0.6s"
+                values="12;6;12"
+                keySplines=".33,.66,.66,1;.33,0,.66,.33"
+              />
+            </circle>
+            <circle cx="35" cy="15" r="5">
+              <animate
+                id="spinner_OcgL"
+                begin="spinner_qFRN.begin+0.2s"
+                attributeName="cy"
+                calcMode="spline"
+                dur="0.6s"
+                values="12;6;12"
+                keySplines=".33,.66,.66,1;.33,0,.66,.33"
+              />
+            </circle>
+          </svg>
+        </div>
+      )}
+      {!loading && sessions.length === 0 && !error && (
         <p className="text-gray-600 text-center">No chat sessions found.</p>
       )}
 
+      {/* Session List */}
       <ul>
         {sessions.map((session) => (
           <li
@@ -128,17 +211,21 @@ export default function SessionsPage() {
               className="cursor-pointer space-y-1"
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && goToSession(session.id)}
+              onKeyDown={(e) =>
+                (e.key === "Enter" || e.key === " ") && goToSession(session.id)
+              }
               aria-label={`Go to session ${session.id} messages`}
             >
-              <p className="text-lg font-semibold text-gray-800">Session ID : {session.id}</p>
+              <p className="text-lg font-semibold text-gray-800">
+                Session ID: {session.id}
+              </p>
               {session.system_prompt && (
                 <p className="text-gray-600 truncate max-w-3xl">
-                  <strong>Prompt :</strong> {session.system_prompt}
+                  <strong>Prompt:</strong> {session.system_prompt}
                 </p>
               )}
               <p className="text-sm text-gray-400">
-                Created at : {new Date(session.created_at).toLocaleString()}
+                Created at: {new Date(session.created_at).toLocaleString()}
               </p>
             </div>
             <div className="mt-4 flex space-x-6 text-blue-600 text-sm font-medium">
@@ -147,9 +234,12 @@ export default function SessionsPage() {
                 aria-label={`Edit system prompt for session ${session.id}`}
                 className="hover:underline focus:outline-none"
               >
-                Edit System Prompt
+                Edit
               </button>
-              <button className="hover:underline cursor-not-allowed opacity-50" disabled>
+              <button
+                className="hover:underline cursor-not-allowed opacity-50"
+                disabled
+              >
                 Delete
               </button>
               <button
@@ -162,6 +252,58 @@ export default function SessionsPage() {
           </li>
         ))}
       </ul>
+
+      {/* Loader & End Messages */}
+      {loading && sessions.length > 0 && (
+        <div className="flex justify-center items-center h-full w-full">
+          <svg
+            fill="hsl(228, 97%, 42%)"
+            viewBox="0 0 60 60"
+            xmlns="http://www.w3.org/2000/svg"
+            width="60"
+            height="60"
+          >
+            <circle cx="5" cy="15" r="5">
+              <animate
+                id="spinner_qFRN"
+                begin="0;spinner_OcgL.end+0.25s"
+                attributeName="cy"
+                calcMode="spline"
+                dur="0.6s"
+                values="12;6;12"
+                keySplines=".33,.66,.66,1;.33,0,.66,.33"
+              />
+            </circle>
+            <circle cx="20" cy="15" r="5">
+              <animate
+                begin="spinner_qFRN.begin+0.1s"
+                attributeName="cy"
+                calcMode="spline"
+                dur="0.6s"
+                values="12;6;12"
+                keySplines=".33,.66,.66,1;.33,0,.66,.33"
+              />
+            </circle>
+            <circle cx="35" cy="15" r="5">
+              <animate
+                id="spinner_OcgL"
+                begin="spinner_qFRN.begin+0.2s"
+                attributeName="cy"
+                calcMode="spline"
+                dur="0.6s"
+                values="12;6;12"
+                keySplines=".33,.66,.66,1;.33,0,.66,.33"
+              />
+            </circle>
+          </svg>
+        </div>
+      )}
+
+      {!loading && !hasMore && sessions.length >= total && (
+        <p className="text-center text-gray-400 py-4">
+          🎉 All {total} sessions loaded
+        </p>
+      )}
 
       {/* Modal */}
       <EditPromptModal

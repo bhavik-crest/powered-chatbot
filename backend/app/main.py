@@ -1,9 +1,9 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models import ChatSession, Message
-from app.schemas import MessageIn, MessageOut, ChatResponse, ChatSessionOut, PromptUpdate
+from app.schemas import MessageIn, MessageOut, ChatResponse, ChatSessionOut, PromptUpdate, PaginatedSessionsResponse
 from app.llm_client import call_openrouter
 from typing import List
 from sqlalchemy import desc
@@ -39,12 +39,22 @@ def clean_response(content: str) -> str:
         content = content.replace(token, "")
     return content.strip()
 
-@app.get("/sessions", response_model=List[ChatSessionOut])
-def get_all_sessions(db: Session = Depends(get_db)):
-    sessions = db.query(ChatSession).order_by(desc(ChatSession.id)).all()
+@app.get("/sessions", response_model=PaginatedSessionsResponse)
+def get_all_sessions(
+    db: Session = Depends(get_db),
+    skip: int = Query(0, ge=0),         # number of records to skip
+    limit: int = Query(10, ge=1, le=100) # maximum number of records to return
+):
+    totalSessions = db.query(ChatSession).count()
+    
+    sessions = db.query(ChatSession) \
+                 .order_by(desc(ChatSession.id)) \
+                 .offset(skip) \
+                 .limit(limit) \
+                 .all()
     if not sessions:
         raise HTTPException(status_code=404, detail="No chat sessions found")
-    return sessions
+    return {"total": totalSessions, "data": sessions}
 
 @app.get("/messages/{session_id}", response_model=List[MessageOut])
 def get_messages(session_id: int, db: Session = Depends(get_db)):

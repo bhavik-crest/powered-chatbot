@@ -26,4 +26,8 @@ class ChatSessionOut(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+class PaginatedSessionsResponse(BaseModel):
+    total: int
+    data: List[ChatSessionOut]
