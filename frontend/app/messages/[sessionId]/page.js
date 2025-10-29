@@ -2,89 +2,18 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const MessageContent = ({ content }) => {
-  const formatText = (text) => {
-    // Split text into blocks (paragraphs, code blocks, lists)
-    return text.split('\n').map((line, lineIndex) => {
-      // Handle headers
-      const headerMatch = line.match(/^(#{1,6})\s(.+)$/);
-      if (headerMatch) {
-        const level = headerMatch[1].length;
-        const sizes = {
-          1: 'text-2xl',
-          2: 'text-xl',
-          3: 'text-lg',
-          4: 'text-base',
-          5: 'text-sm',
-          6: 'text-xs'
-        };
-        return (
-          <div key={lineIndex} className={`${sizes[level]} font-bold my-2`}>
-            {formatInline(headerMatch[2])}
-          </div>
-        );
-      }
-
-      // Handle code blocks
-      if (line.startsWith('```')) {
-        return (
-          <pre key={lineIndex} className="bg-gray-800 text-gray-100 rounded p-2 my-2 overflow-x-auto">
-            <code>{line.slice(3)}</code>
-          </pre>
-        );
-      }
-
-      // Handle lists
-      if (line.match(/^[-*]\s/)) {
-        return (
-          <li key={lineIndex} className="ml-4 list-disc">
-            {formatInline(line.slice(2))}
-          </li>
-        );
-      }
-
-      // Handle blockquotes
-      if (line.startsWith('>')) {
-        return (
-          <blockquote key={lineIndex} className="border-l-4 border-gray-300 pl-4 my-2 italic">
-            {formatInline(line.slice(1).trim())}
-          </blockquote>
-        );
-      }
-
-      // Handle regular text with inline formatting
-      return <p key={lineIndex} className="my-1">{formatInline(line)}</p>;
-    });
-  };
-
-  const formatInline = (text) => {
-    return text
-      .split(/(\*\*.*?\*\*|\*.*?\*|__.*?__|`.*?`|~~.*?~~)/g)
-      .map((part, index) => {
-        if (part.startsWith("**") && part.endsWith("**")) {
-          return <strong key={index}>{part.slice(2, -2)}</strong>;
-        }
-        if (part.startsWith("*") && part.endsWith("*")) {
-          return <em key={index}>{part.slice(1, -1)}</em>;
-        }
-        if (part.startsWith("__") && part.endsWith("__")) {
-          return <u key={index}>{part.slice(2, -2)}</u>;
-        }
-        if (part.startsWith("`") && part.endsWith("`")) {
-          return <code key={index} className="bg-gray-100 px-1 rounded">{part.slice(1, -1)}</code>;
-        }
-        if (part.startsWith("~~") && part.endsWith("~~")) {
-          return <del key={index}>{part.slice(2, -2)}</del>;
-        }
-        return part;
-      });
-  };
 
   return (
-    <div className="whitespace-pre-wrap">
-      {formatText(content)}
+    <div className="markdown-container">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   );
 };
@@ -187,13 +116,58 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-4 h-screen flex flex-col">
+    <div className="max-w-7xl mx-auto p-4 h-screen flex flex-col">
       <h1 className="text-2xl font-bold mb-4 text-gray-800">Chatbot</h1>
-      {loading && <p className="text-gray-500">Loading...</p>}
       <div className="flex-1 border border-gray-200 rounded-lg p-4 mb-4 overflow-y-auto bg-gray-50">
         {messages.length === 0 && !loading && (
           <p className="text-gray-500 text-center">No messages yet.</p>
         )}
+
+        {loading &&
+          <div className="flex justify-center items-center h-full w-full">
+            <svg
+              fill="hsl(228, 97%, 42%)"
+              viewBox="0 0 60 60"
+              xmlns="http://www.w3.org/2000/svg"
+              width="60"
+              height="60"
+            >
+              <circle cx="5" cy="15" r="5">
+                <animate
+                  id="spinner_qFRN"
+                  begin="0;spinner_OcgL.end+0.25s"
+                  attributeName="cy"
+                  calcMode="spline"
+                  dur="0.6s"
+                  values="12;6;12"
+                  keySplines=".33,.66,.66,1;.33,0,.66,.33"
+                />
+              </circle>
+              <circle cx="20" cy="15" r="5">
+                <animate
+                  begin="spinner_qFRN.begin+0.1s"
+                  attributeName="cy"
+                  calcMode="spline"
+                  dur="0.6s"
+                  values="12;6;12"
+                  keySplines=".33,.66,.66,1;.33,0,.66,.33"
+                />
+              </circle>
+              <circle cx="35" cy="15" r="5">
+                <animate
+                  id="spinner_OcgL"
+                  begin="spinner_qFRN.begin+0.2s"
+                  attributeName="cy"
+                  calcMode="spline"
+                  dur="0.6s"
+                  values="12;6;12"
+                  keySplines=".33,.66,.66,1;.33,0,.66,.33"
+                />
+              </circle>
+            </svg>
+          </div>
+        }
+
         {messages.map((msg, idx) => (
           <div
             key={idx}
@@ -206,9 +180,9 @@ export default function ChatPage() {
                 : "bg-white text-gray-800 border border-gray-200 shadow-sm"
                 }`}
             >
-              <p className={`text-sm font-semibold mb-2 ${msg.role === "user" ? "text-blue-100" : "text-gray-600"
+              <p className={`text-md font-semibold mb-2 ${msg.role === "user" ? "text-blue-100" : "text-gray-600"
                 }`}>
-                {msg.role === "user" ? "You" : "Bot"}
+                {msg.role === "user" ? "You" : ("🤖 Bot")}
               </p>
               <MessageContent content={msg.content} />
             </div>
@@ -216,6 +190,7 @@ export default function ChatPage() {
         ))}
         <div ref={messagesEndRef}></div>
       </div>
+
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           type="text"

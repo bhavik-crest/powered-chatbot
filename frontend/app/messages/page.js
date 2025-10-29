@@ -189,7 +189,7 @@ export default function ChatPage() {
     }
 
     return (
-        <div className="max-w-4xl mx-auto p-4 h-screen flex flex-col">
+        <div className="max-w-7xl mx-auto p-4 h-screen flex flex-col">
             <h1 className="text-2xl font-bold mb-4 text-gray-800">Chatbot</h1>
             {loading && <p className="text-gray-500">Loading...</p>}
             <div className="flex-1 border border-gray-200 rounded-lg p-4 mb-4 overflow-y-auto bg-gray-50">

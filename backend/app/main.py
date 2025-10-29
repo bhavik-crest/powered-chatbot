@@ -6,6 +6,7 @@ from app.models import ChatSession, Message
 from app.schemas import MessageIn, MessageOut, ChatResponse, ChatSessionOut, PromptUpdate
 from app.llm_client import call_openrouter
 from typing import List
+from sqlalchemy import desc
 
 app = FastAPI()
 
@@ -40,7 +41,7 @@ def clean_response(content: str) -> str:
 
 @app.get("/sessions", response_model=List[ChatSessionOut])
 def get_all_sessions(db: Session = Depends(get_db)):
-    sessions = db.query(ChatSession).all()
+    sessions = db.query(ChatSession).order_by(desc(ChatSession.id)).all()
     if not sessions:
         raise HTTPException(status_code=404, detail="No chat sessions found")
     return sessions
