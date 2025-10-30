@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+.markdown-container {
+  overflow-x: auto; /* Enables horizontal scroll if needed */
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+}
+
 .markdown-container p,
 .markdown-container h1, h2, h3, h4, h5, h6,
 .markdown-container ul, ol,
@@ -23,7 +28,28 @@
   font-size: 0.875rem;
   margin-top: 1rem;
   margin-bottom: 1rem;
+  width: 100%;  /* Make table take full width */
+  min-width: 600px; /* Optional: ensures table is wide enough */
 }
+
+.markdown-container th,
+.markdown-container td {
+  padding: 0.5rem 1rem;
+  border: 1px solid #ddd; /* Optional: light border for readability */
+  text-align: left;
+  white-space: nowrap; /* Prevent cells from wrapping their content */
+}
+
+@media (max-width: 768px) {
+  .markdown-container table {
+    min-width: 0; /* Remove min-width on narrow screens */
+  }
+  .markdown-container th,
+  .markdown-container td {
+    white-space: normal; /* Allow text wrap for smaller screens */
+  }
+}
+
 
 .markdown-container th,
 .markdown-container td {

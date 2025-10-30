@@ -3,6 +3,9 @@
 import React, { useState, useEffect } from "react";
 
 export default function EditPromptModal({ isOpen, onClose, sessionId, initialPrompt, onUpdate }) {
+
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+
   const [prompt, setPrompt] = useState(initialPrompt || "");
   const [loading, setLoading] = useState(false);
 
@@ -15,7 +18,7 @@ export default function EditPromptModal({ isOpen, onClose, sessionId, initialPro
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/set_system_prompt", {
+      const res = await fetch(`${API_BASE_URL}/set_system_prompt`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId, system_prompt: prompt }),

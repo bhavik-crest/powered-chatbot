@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 const MessageContent = ({ content }) => {
     const formatText = (text) => {
@@ -110,7 +111,7 @@ export default function ChatPage() {
         async function fetchMessages() {
             try {
                 setLoading(true);
-                const res = await fetch(`http://127.0.0.1:8000/messages/${sessionId}`);
+                const res = await fetch(`${API_BASE_URL}/messages/${sessionId}`);
 
                 if (res.status === 404) {
                     router.push(`/`);
@@ -148,7 +149,7 @@ export default function ChatPage() {
                 { role: "user", content: input },
             ]);
 
-            const res = await fetch("http://127.0.0.1:8000/chat", {
+            const res = await fetch(`${API_BASE_URL}/chat`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),

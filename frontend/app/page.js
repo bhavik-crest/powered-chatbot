@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import EditPromptModal from "./components/EditPromptModal";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+
 export default function SessionsPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState([]);
@@ -50,7 +52,7 @@ export default function SessionsPage() {
     try {
       const skip = skipRef.current;
       const res = await fetch(
-        `http://127.0.0.1:8000/sessions?skip=${skip}&limit=${limit}`
+        `${API_BASE_URL}/sessions?skip=${skip}&limit=${limit}`
       );
 
       if (!res.ok) {

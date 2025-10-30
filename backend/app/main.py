@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
@@ -9,6 +9,7 @@ from typing import List
 from sqlalchemy import desc
 
 app = FastAPI()
+api_router = APIRouter(prefix="/api")
 
 # List all origins you want to allow requests from
 origins = [
@@ -39,7 +40,7 @@ def clean_response(content: str) -> str:
         content = content.replace(token, "")
     return content.strip()
 
-@app.get("/sessions", response_model=PaginatedSessionsResponse)
+@api_router.get("/sessions", response_model=PaginatedSessionsResponse)
 def get_all_sessions(
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0),         # number of records to skip
@@ -56,7 +57,7 @@ def get_all_sessions(
         raise HTTPException(status_code=404, detail="No chat sessions found")
     return {"total": totalSessions, "data": sessions}
 
-@app.get("/messages/{session_id}", response_model=List[MessageOut])
+@api_router.get("/messages/{session_id}", response_model=List[MessageOut])
 def get_messages(session_id: int, db: Session = Depends(get_db)):
     messages = db.query(Message).filter_by(session_id=session_id).order_by(Message.timestamp).all()
     if not messages:
@@ -71,7 +72,7 @@ def get_messages(session_id: int, db: Session = Depends(get_db)):
         for msg in messages
     ]
 
-@app.post("/chat", response_model=ChatResponse)
+@api_router.post("/chat", response_model=ChatResponse)
 def chat_endpoint(message_in: MessageIn, db: Session = Depends(get_db)):
     # Get or create session
     session_id = message_in.session_id
@@ -130,7 +131,7 @@ def chat_endpoint(message_in: MessageIn, db: Session = Depends(get_db)):
 
 # ---- Bonus: Reset session (clear history) ----
 
-@app.post("/reset")
+@api_router.post("/reset")
 def reset_endpoint(session_id: int, db: Session = Depends(get_db)):
     db.query(Message).filter_by(session_id=session_id).delete()
     db.commit()
@@ -138,7 +139,7 @@ def reset_endpoint(session_id: int, db: Session = Depends(get_db)):
 
 # ---- Bonus: Set system prompt (personality) ----
 
-@app.post("/set_system_prompt")
+@api_router.post("/set_system_prompt")
 def set_prompt(data: PromptUpdate, db: Session = Depends(get_db)):
     session = db.query(ChatSession).filter_by(id=data.session_id).first()
     if not session:
@@ -146,3 +147,6 @@ def set_prompt(data: PromptUpdate, db: Session = Depends(get_db)):
     session.system_prompt = data.system_prompt
     db.commit()
     return {"status": "updated", "session_id": data.session_id, "system_prompt": data.system_prompt}
+
+
+app.include_router(api_router)
