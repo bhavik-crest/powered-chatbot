@@ -13,6 +13,7 @@ export default function SessionsPage() {
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState(null);
@@ -134,6 +135,20 @@ export default function SessionsPage() {
     }
   }
 
+  async function handleDeleteSession(sessionId) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/reset/${sessionId}`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      setSuccessMessage("Session deleted successfully.");
+      setTimeout(() => setSuccessMessage(""), 3000);
+    } catch (err) {
+      setError("Could not delete session.");
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto p-6">
       <div className="flex justify-between items-center mb-8">
@@ -153,6 +168,14 @@ export default function SessionsPage() {
           {error}
         </p>
       )}
+
+      {/* Success message */}
+      {successMessage && (
+        <p className="text-green-600 text-center mb-4 bg-green-50 border border-green-200 rounded-lg p-3">
+          {successMessage}
+        </p>
+      )}
+
       {loading && sessions.length === 0 && (
         <div className="flex justify-center items-center h-full w-full">
           <svg
@@ -239,8 +262,8 @@ export default function SessionsPage() {
                 Edit
               </button>
               <button
-                className="hover:underline cursor-not-allowed opacity-50"
-                disabled
+                onClick={() => handleDeleteSession(session.id)}
+                className="hover:underline cursor-pointer text-blue-600"
               >
                 Delete
               </button>

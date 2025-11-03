@@ -131,9 +131,10 @@ def chat_endpoint(message_in: MessageIn, db: Session = Depends(get_db)):
 
 # ---- Bonus: Reset session (clear history) ----
 
-@api_router.post("/reset")
+@api_router.post("/reset/{session_id}")
 def reset_endpoint(session_id: int, db: Session = Depends(get_db)):
     db.query(Message).filter_by(session_id=session_id).delete()
+    session = db.query(ChatSession).filter_by(id=session_id).delete()
     db.commit()
     return {"status": "reset", "session_id": session_id}
 

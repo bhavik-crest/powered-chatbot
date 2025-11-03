@@ -70,6 +70,7 @@ export default function ChatPage() {
   async function sendMessage() {
     if (!input.trim()) return;
     setButtonLoading(true);
+    setInput("");
 
     try {
       const body = sessionId ? { session_id: sessionId, content: input } : { content: input };
@@ -119,7 +120,17 @@ export default function ChatPage() {
 
   return (
     <div className="max-w-7xl mx-auto p-4 h-screen flex flex-col">
-      <h1 className="text-2xl font-bold mb-4 text-gray-800">Chatbot</h1>
+       <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold text-gray-800">Chatbot</h1>
+          {/* Back Button aligned right */}
+          <button
+            onClick={() => router.push('/')}
+            className="bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300 transition font-medium"
+            aria-label="Go back"
+          >
+            Back
+          </button>
+        </div>
       <div className="flex-1 border border-gray-200 rounded-lg p-4 mb-4 overflow-y-auto bg-gray-50">
         {messages.length === 0 && !loading && (
           <p className="text-gray-500 text-center">No messages yet.</p>
