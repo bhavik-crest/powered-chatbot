@@ -19,6 +19,7 @@ api_router = APIRouter(prefix="/api")
 origins = [
     "http://localhost:3000",  # your Next.js dev server origin
     "http://127.0.0.1:3000",  # possible alternative local address
+    "https://powered-chatbot.vercel.app",   # ✅ your deployed frontend
     # Add other domains here if needed
 ]
 
