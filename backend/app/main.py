@@ -86,7 +86,7 @@ def chat_endpoint(message_in: MessageIn):
 
         # 1. Get or create session
         if not session_id:
-            new_session = supabase.table("chat_sessions").insert({"system_prompt": "You are a helpful assistant."}).execute()
+            new_session = supabase.table("sessions").insert({"system_prompt": "You are a helpful assistant."}).execute()
             session_id = new_session.data[0]["id"]
 
         # 2. Retrieve message history
@@ -104,7 +104,7 @@ def chat_endpoint(message_in: MessageIn):
         messages_payload.append({"role": "user", "content": message_in.content})
 
         # 4. Add system prompt if missing
-        session_data = supabase.table("chat_sessions").select("system_prompt").eq("id", session_id).execute()
+        session_data = supabase.table("sessions").select("system_prompt").eq("id", session_id).execute()
         system_prompt = session_data.data[0]["system_prompt"] or "You are a helpful assistant."
         if not any(m["role"] == "system" for m in messages_payload):
             messages_payload.insert(0, {"role": "system", "content": system_prompt})
@@ -141,7 +141,7 @@ def chat_endpoint(message_in: MessageIn):
 def reset_endpoint(session_id: int):
     try:
         supabase.table("messages").delete().eq("session_id", session_id).execute()
-        supabase.table("chat_sessions").delete().eq("id", session_id).execute()
+        supabase.table("sessions").delete().eq("id", session_id).execute()
         return {"status": "reset", "session_id": session_id}
     except Exception as ex:
         raise HTTPException(status_code=500, detail=str(ex))
@@ -151,7 +151,7 @@ def reset_endpoint(session_id: int):
 @api_router.post("/set_system_prompt")
 def set_prompt(data: PromptUpdate):
     try:
-        supabase.table("chat_sessions").update({"system_prompt": data.system_prompt}).eq("id", data.session_id).execute()
+        supabase.table("sessions").update({"system_prompt": data.system_prompt}).eq("id", data.session_id).execute()
         return {"status": "updated", "session_id": data.session_id, "system_prompt": data.system_prompt}
     except Exception as ex:
         raise HTTPException(status_code=500, detail=str(ex))
