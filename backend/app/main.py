@@ -50,16 +50,21 @@ def get_all_sessions(
     skip: int = Query(0, ge=0),         # number of records to skip
     limit: int = Query(10, ge=1, le=100) # maximum number of records to return
 ):
-    totalSessions = db.query(ChatSession).count()
-    
-    sessions = db.query(ChatSession) \
-                 .order_by(desc(ChatSession.id)) \
-                 .offset(skip) \
-                 .limit(limit) \
-                 .all()
-    if not sessions:
-        raise HTTPException(status_code=404, detail="No chat sessions found")
-    return {"total": totalSessions, "data": sessions}
+    try:
+        totalSessions = db.query(ChatSession).count()
+        
+        sessions = db.query(ChatSession) \
+                    .order_by(desc(ChatSession.id)) \
+                    .offset(skip) \
+                    .limit(limit) \
+                    .all()
+        if not sessions:
+            raise HTTPException(status_code=404, detail="No chat sessions found")
+        return {"total": totalSessions, "data": sessions}
+    except Exception as ex:
+        import traceback
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(ex))
 
 @api_router.get("/messages/{session_id}", response_model=List[MessageOut])
 def get_messages(session_id: int, db: Session = Depends(get_db)):
