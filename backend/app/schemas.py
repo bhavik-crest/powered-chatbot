@@ -23,7 +23,7 @@ class PromptUpdate(BaseModel):
 class ChatSessionOut(BaseModel):
     id: int
     system_prompt: str | None = None
-    created_at: datetime
+    created_at: Optional[datetime] = None  # 👈 changed
 
     class Config:
         from_attributes = True
