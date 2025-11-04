@@ -7,6 +7,10 @@ from app.schemas import MessageIn, MessageOut, ChatResponse, ChatSessionOut, Pro
 from app.llm_client import call_openrouter
 from typing import List
 from sqlalchemy import desc
+from datetime import datetime
+from app.core.db_client import supabase
+from fastapi import APIRouter, HTTPException, Query
+from typing import List
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -36,127 +40,120 @@ def get_db():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-    
-# --- POST /chat: Send/receive messages---
+
+
 def clean_response(content: str) -> str:
-    # Remove trailing special tokens common in some LLM outputs
     for token in ["[/s]", "<s>", "</s>", "<|endoftext|>"]:
         content = content.replace(token, "")
     return content.strip()
 
+
+# ---- GET /sessions ----
 @api_router.get("/sessions", response_model=PaginatedSessionsResponse)
-def get_all_sessions(
-    db: Session = Depends(get_db),
-    skip: int = Query(0, ge=0),         # number of records to skip
-    limit: int = Query(10, ge=1, le=100) # maximum number of records to return
-):
+def get_all_sessions(skip: int = Query(0, ge=0), limit: int = Query(10, ge=1, le=100)):
     try:
-        totalSessions = db.query(ChatSession).count()
-        
-        sessions = db.query(ChatSession) \
-                    .order_by(desc(ChatSession.id)) \
-                    .offset(skip) \
-                    .limit(limit) \
-                    .all()
+        all_sessions = supabase.table("sessions").select("*").order("id", desc=True).execute()
+        total = len(all_sessions.data)
+        sessions = all_sessions.data[skip: skip + limit]
         if not sessions:
             raise HTTPException(status_code=404, detail="No chat sessions found")
-        return {"total": totalSessions, "data": sessions}
+        return {"total": total, "data": sessions}
     except Exception as ex:
-        import traceback
-        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(ex))
 
+
+# ---- GET /messages/{session_id} ----
 @api_router.get("/messages/{session_id}", response_model=List[MessageOut])
-def get_messages(session_id: int, db: Session = Depends(get_db)):
-    messages = db.query(Message).filter_by(session_id=session_id).order_by(Message.timestamp).all()
-    if not messages:
-        raise HTTPException(status_code=404, detail="Session or messages not found")
-    
-    return [
-        MessageOut(
-            role=msg.role,
-            content=msg.content,
-            timestamp=str(msg.timestamp)
-        )
-        for msg in messages
-    ]
-
-@api_router.post("/chat", response_model=ChatResponse)
-def chat_endpoint(message_in: MessageIn, db: Session = Depends(get_db)):
-    # Get or create session
-    session_id = message_in.session_id
-    if session_id:
-        session = db.query(ChatSession).filter_by(id=session_id).first()
-    else:
-        session = ChatSession()
-        db.add(session)
-        db.commit()
-        db.refresh(session)
-        session_id = session.id
-
-    # Retrieve session messages (history)
-    history = db.query(Message).filter_by(session_id=session_id).order_by(Message.timestamp).all()
-    messages_payload = [{"role": msg.role, "content": msg.content} for msg in history]
-
-    # Add user message to history and payload
-    user_msg = Message(session_id=session_id, role="user", content=message_in.content)
-    db.add(user_msg)
-    db.commit()
-    db.refresh(user_msg)
-    messages_payload.append({"role": "user", "content": message_in.content})
-
-    # Add system prompt if not present
-    system_prompt = session.system_prompt or "You are a helpful assistant."
-    if not any(m["role"] == "system" for m in messages_payload):
-        messages_payload.insert(0, {"role": "system", "content": system_prompt})
-
-    # Call LLM with full history
+def get_messages(session_id: int):
     try:
+        result = supabase.table("messages").select("*").eq("session_id", session_id).order("timestamp", desc=False).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Session or messages not found")
+        return [
+            MessageOut(role=m["role"], content=m["content"], timestamp=m["timestamp"])
+            for m in result.data
+        ]
+    except Exception as ex:
+        raise HTTPException(status_code=500, detail=str(ex))
+
+
+# ---- POST /chat ----
+@api_router.post("/chat", response_model=ChatResponse)
+def chat_endpoint(message_in: MessageIn):
+    try:
+        session_id = message_in.session_id
+
+        # 1. Get or create session
+        if not session_id:
+            new_session = supabase.table("chat_sessions").insert({"system_prompt": "You are a helpful assistant."}).execute()
+            session_id = new_session.data[0]["id"]
+
+        # 2. Retrieve message history
+        history = supabase.table("messages").select("*").eq("session_id", session_id).order("timestamp", desc=False).execute()
+        messages_payload = [{"role": m["role"], "content": m["content"]} for m in history.data]
+
+        # 3. Add user message
+        supabase.table("messages").insert({
+            "session_id": session_id,
+            "role": "user",
+            "content": message_in.content,
+            "timestamp": datetime.utcnow().isoformat()
+        }).execute()
+
+        messages_payload.append({"role": "user", "content": message_in.content})
+
+        # 4. Add system prompt if missing
+        session_data = supabase.table("chat_sessions").select("system_prompt").eq("id", session_id).execute()
+        system_prompt = session_data.data[0]["system_prompt"] or "You are a helpful assistant."
+        if not any(m["role"] == "system" for m in messages_payload):
+            messages_payload.insert(0, {"role": "system", "content": system_prompt})
+
+        # 5. Call LLM
         reply_raw = call_openrouter(messages_payload)
         reply = clean_response(reply_raw)
         if not reply:
             raise Exception("Empty completion received from LLM")
+
+        # 6. Save assistant reply
+        supabase.table("messages").insert({
+            "session_id": session_id,
+            "role": "assistant",
+            "content": reply,
+            "timestamp": datetime.utcnow().isoformat()
+        }).execute()
+
+        # 7. Return updated history
+        final_msgs = supabase.table("messages").select("*").eq("session_id", session_id).order("timestamp", desc=False).execute()
+        history_out = [
+            MessageOut(role=m["role"], content=m["content"], timestamp=m["timestamp"])
+            for m in final_msgs.data
+        ]
+
+        return ChatResponse(reply=reply, session=session_id, history=history_out)
+
     except Exception as e:
-        if "Empty completion" in str(e):
-            raise HTTPException(status_code=503, detail="LLM returned empty response, please try again.")
-        elif "LLM API Error" in str(e):
-            raise HTTPException(status_code=503, detail=str(e))
-        else:
-            raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail=str(e))
 
-    # Save assistant reply in history
-    assistant_msg = Message(session_id=session_id, role="assistant", content=reply)
-    db.add(assistant_msg)
-    db.commit()
 
-    # Prepare updated history for response
-    all_msgs = db.query(Message).filter_by(session_id=session_id).order_by(Message.timestamp).all()
-    history_out = [
-        MessageOut(role=msg.role, content=msg.content, timestamp=str(msg.timestamp))
-        for msg in all_msgs
-    ]
-
-    return ChatResponse(reply=reply, session=session_id, history=history_out)
-
-# ---- Bonus: Reset session (clear history) ----
-
+# ---- POST /reset/{session_id} ----
 @api_router.post("/reset/{session_id}")
-def reset_endpoint(session_id: int, db: Session = Depends(get_db)):
-    db.query(Message).filter_by(session_id=session_id).delete()
-    session = db.query(ChatSession).filter_by(id=session_id).delete()
-    db.commit()
-    return {"status": "reset", "session_id": session_id}
+def reset_endpoint(session_id: int):
+    try:
+        supabase.table("messages").delete().eq("session_id", session_id).execute()
+        supabase.table("chat_sessions").delete().eq("id", session_id).execute()
+        return {"status": "reset", "session_id": session_id}
+    except Exception as ex:
+        raise HTTPException(status_code=500, detail=str(ex))
 
-# ---- Bonus: Set system prompt (personality) ----
 
+# ---- POST /set_system_prompt ----
 @api_router.post("/set_system_prompt")
-def set_prompt(data: PromptUpdate, db: Session = Depends(get_db)):
-    session = db.query(ChatSession).filter_by(id=data.session_id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    session.system_prompt = data.system_prompt
-    db.commit()
-    return {"status": "updated", "session_id": data.session_id, "system_prompt": data.system_prompt}
+def set_prompt(data: PromptUpdate):
+    try:
+        supabase.table("chat_sessions").update({"system_prompt": data.system_prompt}).eq("id", data.session_id).execute()
+        return {"status": "updated", "session_id": data.session_id, "system_prompt": data.system_prompt}
+    except Exception as ex:
+        raise HTTPException(status_code=500, detail=str(ex))
 
 
 app.include_router(api_router)
