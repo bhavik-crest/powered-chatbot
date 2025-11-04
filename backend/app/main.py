@@ -40,7 +40,7 @@ def get_db():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "okkkkk"}
 
 
 def clean_response(content: str) -> str:
