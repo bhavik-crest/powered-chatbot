@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import EditPromptModal from "./components/EditPromptModal";
+import Swal from "sweetalert2";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -137,15 +138,34 @@ export default function SessionsPage() {
 
   async function handleDeleteSession(sessionId) {
     try {
-      const res = await fetch(`${API_BASE_URL}/reset/${sessionId}`, {
-        method: "POST",
+      const result = await Swal.fire({
+        title: 'Are you sure?',
+        text: "You won't be able to revert this!",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#d33',
+        confirmButtonText: 'Yes, delete it!'
       });
-      if (!res.ok) throw new Error("Delete failed");
-      setSessions(prev => prev.filter(s => s.id !== sessionId));
-      setSuccessMessage("Session deleted successfully.");
-      setTimeout(() => setSuccessMessage(""), 3000);
+
+      if (result.isConfirmed) {
+        const res = await fetch(`${API_BASE_URL}/reset/${sessionId}`, {
+          method: "POST",
+        });
+        
+        if (!res.ok) throw new Error("Delete failed");
+        
+        setSessions(prev => prev.filter(s => s.id !== sessionId));
+        
+        setSuccessMessage("Chat deleted successfully.");
+        setTimeout(() => setSuccessMessage(""), 3000);
+      }
     } catch (err) {
-      setError("Could not delete session.");
+      Swal.fire(
+        'Error!',
+        'Could not delete chat.',
+        'error'
+      );
     }
   }
 

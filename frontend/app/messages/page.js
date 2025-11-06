@@ -140,6 +140,7 @@ export default function ChatPage() {
     async function sendMessage() {
         if (!input.trim()) return;
         setButtonLoading(true);
+        setInput("");
 
         try {
             const body = sessionId ? { session_id: sessionId, content: input } : { content: input };
