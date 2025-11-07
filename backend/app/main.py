@@ -64,16 +64,48 @@ def get_all_sessions(skip: int = Query(0, ge=0), limit: int = Query(10, ge=1, le
 
 
 # ---- GET /messages/{session_id} ----
-@api_router.get("/messages/{session_id}", response_model=List[MessageOut])
-def get_messages(session_id: int):
+@api_router.get("/messages/{session_id}")
+def get_messages(session_id: int, page: int = Query(1, ge=1)):
     try:
-        result = supabase.table("messages").select("*").eq("session_id", session_id).order("timestamp", desc=False).execute()
-        if not result.data:
-            raise HTTPException(status_code=404, detail="Session or messages not found")
-        return [
-            MessageOut(role=m["role"], content=m["content"], timestamp=m["timestamp"])
-            for m in result.data
+        limit = 10
+        offset = (page - 1) * limit
+
+        total_result = (
+            supabase.table("messages")
+            .select("id", count="exact")
+            .eq("session_id", session_id)
+            .execute()
+        )
+        
+        total_count = total_result.count or 0
+
+        # Order DESC so newest messages come first
+        result = (
+            supabase.table("messages")
+            .select("*")
+            .eq("session_id", session_id)
+            .order("timestamp", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
+
+        # Reverse before sending, so FE can render bottom-up
+        messages = [
+            MessageOut(
+                role=m["role"],
+                content=m["content"],
+                timestamp=m["timestamp"]
+            )
+            for m in reversed(result.data)
         ]
+
+        return {
+            "page": page,
+            "total_messages": total_count,
+            "total_pages": (total_count + limit - 1) // limit,
+            "messages": messages,
+        }
+
     except Exception as ex:
         raise HTTPException(status_code=500, detail=str(ex))
 

@@ -7,79 +7,101 @@ import remarkGfm from "remark-gfm";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-const MessageContent = ({ content }) => {
-
-  return (
-    <div className="markdown-container">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
-  );
-};
+const MessageContent = ({ content }) => (
+  <div className="markdown-container">
+    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+      {content}
+    </ReactMarkdown>
+  </div>
+);
 
 export default function ChatPage() {
-  const params = useParams(); // Get dynamic params
+  const { sessionId } = useParams();
   const router = useRouter();
 
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState([]); // {role: "user" | "assistant", content: string}
-  const { sessionId } = params;
+  const [messages, setMessages] = useState([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [buttonLoading, setButtonLoading] = useState(false);
+  const messagesContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
 
-  // Auto-scroll to bottom when messages update
+  // Auto-scroll to bottom when messages change (new message sent)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (page === 1) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Fetch existing messages when sessionId changes or on mount
+  // ✅ Fetch messages for a given page
+  async function fetchMessages(currentPage = 1, appendTop = false) {
+  try {
+    if (currentPage === 1) setLoading(true);
+    else setLoadingMore(true);
+
+    const res = await fetch(`${API_BASE_URL}/messages/${sessionId}?page=${currentPage}`);
+    if (!res.ok) {
+      const err = await res.json();
+      if (res.status === 404) router.push(`/`);
+      else alert(`Error: ${err.detail || "Unknown error"}`);
+      return;
+    }
+
+    const data = await res.json();
+
+    setTotalPages(data.total_pages || 1);
+    setPage(currentPage);
+
+    // ✅ If loading older messages, prepend them (avoid duplicates)
+    if (appendTop) {
+      setMessages((prev) => {
+        const newMsgs = data.messages.filter(
+          (m) => !prev.some((pm) => pm.timestamp === m.timestamp && pm.content === m.content)
+        );
+        return [...newMsgs, ...prev];
+      });
+    } else {
+      setMessages(data.messages);
+    }
+  } catch (error) {
+    alert("Failed to fetch messages: " + error.message);
+  } finally {
+    setLoading(false);
+    setLoadingMore(false);
+  }
+}
+
+
+  // Fetch first page on mount
   useEffect(() => {
-    async function fetchMessages() {
-      try {
-        setLoading(true);
-        const res = await fetch(`${API_BASE_URL}/messages/${sessionId}`);
-
-        if (res.status === 404) {
-          router.push(`/`);
-          return;
-        }
-
-        if (!res.ok) {
-          const err = await res.json();
-          alert(`Error fetching messages: ${err.detail || "Unknown error"}`);
-          setLoading(false);
-          return;
-        }
-        const data = await res.json();
-        setMessages(data);
-      } catch (error) {
-        alert("Failed to fetch messages: " + error.message);
-      }
-      setLoading(false);
-    }
-
-    if (sessionId) {
-      fetchMessages();
-    }
+    if (sessionId) fetchMessages(1);
   }, [sessionId]);
+
+  // ✅ Scroll event: load older messages when scrolled to top
+  function handleScroll(e) {
+  const container = e.target;
+  if (container.scrollTop === 0 && !loadingMore && page < totalPages) {
+    const prevScrollHeight = container.scrollHeight;
+    const nextPage = page + 1;
+    fetchMessages(nextPage, true).then(() => {
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight - prevScrollHeight;
+      });
+    });
+  }
+}
+
 
   async function sendMessage() {
     if (!input.trim()) return;
     setButtonLoading(true);
+    const userMsg = { role: "user", content: input };
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
 
     try {
-      const body = sessionId ? { session_id: sessionId, content: input } : { content: input };
-
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", content: input },
-      ]);
-
+      const body = { session_id: sessionId, content: userMsg.content };
       const res = await fetch(`${API_BASE_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -87,26 +109,14 @@ export default function ChatPage() {
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        alert(`Error: ${errorData.detail || "Unknown error"}`);
+        const err = await res.json();
+        alert(`Error: ${err.detail || "Unknown error"}`);
         setButtonLoading(false);
         return;
       }
 
       const data = await res.json();
-
-      if (!sessionId && data.history.length > 0) {
-        sessionId = data.history[0].session_id || sessionId;
-      }
-
-      // Append just sent user message and assistant reply to existing messages
-      setMessages((prev) => [
-        ...prev,
-        // { role: "user", content: input },
-        { role: "assistant", content: data.reply },
-      ]);
-
-      setInput("");
+      setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
     } catch (error) {
       alert("Failed to send message: " + error.message);
     }
@@ -120,31 +130,27 @@ export default function ChatPage() {
 
   return (
     <div className="max-w-7xl mx-auto p-4 h-screen flex flex-col">
-       <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold text-gray-800">Chatbot</h1>
-          {/* Back Button aligned right */}
-          <button
-            onClick={() => router.push('/')}
-            className="bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300 transition font-medium"
-            aria-label="Go back"
-          >
-            Back
-          </button>
-        </div>
-      <div className="flex-1 border border-gray-200 rounded-lg p-4 mb-4 overflow-y-auto bg-gray-50">
-        {messages.length === 0 && !loading && (
-          <p className="text-gray-500 text-center">No messages yet.</p>
-        )}
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold text-gray-800">Chatbot</h1>
+        <button
+          onClick={() => router.push('/')}
+          className="bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300 transition font-medium"
+        >
+          Back
+        </button>
+      </div>
 
-        {loading &&
-          <div className="flex justify-center items-center h-full w-full">
-            <svg
-              fill="hsl(228, 97%, 42%)"
-              viewBox="0 0 60 60"
-              xmlns="http://www.w3.org/2000/svg"
-              width="60"
-              height="60"
-            >
+      {/* Messages container */}
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 border border-gray-200 rounded-lg p-4 mb-4 overflow-y-auto bg-gray-50"
+      >
+        {/* Loading state */}
+        {loading && (
+          <div className="flex justify-center items-center h-full">
+            <svg fill="hsl(228,97%,42%)" viewBox="0 0 60 60" width="60" height="60">
               <circle cx="5" cy="15" r="5">
                 <animate
                   id="spinner_qFRN"
@@ -179,23 +185,36 @@ export default function ChatPage() {
               </circle>
             </svg>
           </div>
-        }
+        )}
 
+        {/* Older messages loader */}
+        {loadingMore && (
+          <div className="flex items-center justify-center">
+            <div className="bg-white text-gray-600 text-sm px-4 py-2 rounded-lg shadow">
+              Loading older messages...
+            </div>
+          </div>
+        )}
+
+        {/* Messages */}
         {messages.map((msg, idx) => (
           <div
             key={idx}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"
-              } mb-4`}
+            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} mb-4`}
           >
             <div
-              className={`max-w-[70%] rounded-lg p-3 ${msg.role === "user"
-                ? "bg-blue-500 text-white shadow-sm"
-                : "bg-white text-gray-800 border border-gray-200 shadow-sm"
-                }`}
+              className={`max-w-[70%] rounded-lg p-3 ${
+                msg.role === "user"
+                  ? "bg-blue-500 text-white shadow-sm"
+                  : "bg-white text-gray-800 border border-gray-200 shadow-sm"
+              }`}
             >
-              <p className={`text-md font-semibold mb-2 ${msg.role === "user" ? "text-blue-100" : "text-gray-600"
-                }`}>
-                {msg.role === "user" ? "You" : ("🤖 Bot")}
+              <p
+                className={`text-md font-semibold mb-2 ${
+                  msg.role === "user" ? "text-blue-100" : "text-gray-600"
+                }`}
+              >
+                {msg.role === "user" ? "You" : "🤖 Bot"}
               </p>
               <MessageContent content={msg.content} />
             </div>
@@ -209,10 +228,11 @@ export default function ChatPage() {
             </div>
           </div>
         )}
-        
+
         <div ref={messagesEndRef}></div>
       </div>
 
+      {/* Input */}
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           type="text"
@@ -222,20 +242,13 @@ export default function ChatPage() {
           className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
           placeholder="Type your message..."
         />
-        {
-          loading ? (<p
-            disabled={loading}
-            className="px-6 py-3 bg-blue-300 text-white rounded-lg hover:bg-blue-600 disabled:bg-blue-300 transition-colors"
-          >
-            Send
-          </p>) : (<button
-            type="submit"
-            disabled={buttonLoading}
-            className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-blue-300 transition-colors"
-          >
-            {buttonLoading ? "Sending..." : "Send"}
-          </button>)
-        }
+        <button
+          type="submit"
+          disabled={buttonLoading}
+          className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-blue-300 transition-colors"
+        >
+          {buttonLoading ? "Sending..." : "Send"}
+        </button>
       </form>
     </div>
   );
