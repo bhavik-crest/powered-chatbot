@@ -279,7 +279,7 @@ export default function SessionsPage() {
                 aria-label={`Edit system prompt for session ${session.id}`}
                 className="hover:underline focus:outline-none"
               >
-                Edit
+                Edit Prompt
               </button>
               <button
                 onClick={() => handleDeleteSession(session.id)}
