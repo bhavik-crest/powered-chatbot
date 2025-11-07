@@ -201,6 +201,15 @@ export default function ChatPage() {
             </div>
           </div>
         ))}
+
+        {buttonLoading && (
+          <div className="flex justify-start mb-4">
+            <div className="max-w-[70%] rounded-lg p-3 bg-white text-gray-800 border border-gray-200 shadow-sm">
+              <p className="text-md font-semibold mb-2 text-gray-600">🤖 Bot is thinking...</p>
+            </div>
+          </div>
+        )}
+        
         <div ref={messagesEndRef}></div>
       </div>
 
