@@ -29,9 +29,18 @@ export default function ChatPage() {
   const messagesContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
 
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [showNewMsgIndicator, setShowNewMsgIndicator] = useState(false);
+
+
   // Auto-scroll to bottom when messages change (new message sent)
   useEffect(() => {
-    if (page === 1) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (page === 1 && isAtBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    } else if (!isAtBottom && buttonLoading === true) {
+      // If user is scrolled up, show "new message" indicator
+      setShowNewMsgIndicator(true);
+    }
   }, [messages]);
 
   // ✅ Fetch messages for a given page
@@ -90,6 +99,11 @@ export default function ChatPage() {
       });
     });
   }
+
+   // --- Track bottom position
+  const isBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 20;
+  setIsAtBottom(isBottom);
+  if (isBottom) setShowNewMsgIndicator(false);
 }
 
 
@@ -129,7 +143,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-4 h-screen flex flex-col">
+    <div className="relative max-w-7xl mx-auto p-4 h-screen flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-gray-800">Chatbot</h1>
@@ -231,6 +245,20 @@ export default function ChatPage() {
 
         <div ref={messagesEndRef}></div>
       </div>
+
+      {showNewMsgIndicator && (
+          <div className="new-message absolute bottom-24 left-1/2 -translate-x-1/2">
+            <button
+              onClick={() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                setShowNewMsgIndicator(false);
+              }}
+              className="flex items-center gap-2 bg-blue-600 text-white text-sm px-4 py-2 rounded-full shadow-lg hover:bg-blue-700 transition"
+            >
+              🔽 New Message
+            </button>
+          </div>
+        )}
 
       {/* Input */}
       <form onSubmit={handleSubmit} className="flex gap-2">
