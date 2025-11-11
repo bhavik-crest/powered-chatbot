@@ -28,7 +28,22 @@ This project is a full-stack web application featuring a LLM chatbot interface. 
 - `poetry` or `pip` for Python dependency management
 - Vercel or similar platform for frontend deployment (optional)
 
+### Frontend Setup
+
+1. Navigate to the frontend folder
+2. Install dependencies:
+3. cd frontend
+4. npm install
+5. Create a `.env.local` file and define the backend API base URL: NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api
+6. Run the development server : `npm run dev`
+7. Access the app at `http://localhost:3000`
+
 ### Backend Setup
 
 1. Clone the repository
 2. Create a virtual environment and install dependencies
+3. cd backend
+4. pip install -r requirements.txt
+5. Set environment variables (e.g., `.env`) with your database URL and API settings
+6. Run migrations using Alembic to setup your database schema
+7. Start the backend server : uvicorn app.main:app --reload
